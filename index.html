@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
     <title>Mapbox Kevin Loza - Ubicación en Vivo</title>
 
-    <!-- Mapbox GL JS CSS -->
+    <!-- Mapbox JS CSS -->
     <link href="https://api.mapbox.com/mapbox-gl-js/v3.7.0/mapbox-gl.css" rel="stylesheet" />
     <style>
         body { margin: 0; padding: 0; font-family: Arial, sans-serif; }
@@ -40,7 +40,6 @@
     <div class="info" id="coords">Cargando ubicación...</div>
     <div class="status" id="status">Conectando a Firebase...</div>
 
-    <!-- Mapbox GL JS -->
     <script src="https://api.mapbox.com/mapbox-gl-js/v3.7.0/mapbox-gl.js"></script>
 
     <!-- Firebase SDK (v9 Modular) -->
@@ -48,7 +47,6 @@
         import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
         import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-database.js";
 
-        // === TU CONFIGURACIÓN DE FIREBASE (cópiala desde Firebase Console) ===
         // For Firebase JS SDK v7.20.0 and later, measurementId is optional
         const firebaseConfig = {
           apiKey: "AIzaSyB-ToD8fquOAAkzbUy6TBoH-3wWEZEUEXw",
@@ -61,24 +59,23 @@
           measurementId: "G-KE9LD7NFFG"
         };
 
-        // Inicializar Firebase
+        // Inicia Firebase
         const app = initializeApp(firebaseConfig);
         const db = getDatabase(app);
         const ubicacionRef = ref(db, 'ubicacion/usuario');
 
-        // Inicializar Mapbox
-        mapboxgl.accessToken = 'pk.eyJ1IjoibHprMjkxMiIsImEiOiJjbWdzYmZicjUxcXMyMmlwdnJsNmJhc2Y2In0.H_AarMxbn777uwj92e5eTQ'; // TU TOKEN PK
+        // Inicia Mapbox
+        mapboxgl.accessToken = 'pk.eyJ1IjoibHprMjkxMiIsImEiOiJjbWdzYmZicjUxcXMyMmlwdnJsNmJhc2Y2In0.H_AarMxbn777uwj92e5eTQ';
 
         const map = new mapboxgl.Map({
             container: 'map',
             style: 'mapbox://styles/mapbox/dark-v11',
-            center: [-74.0060, 40.7128], // NYC por defecto
+            center: [-74.0060, 40.7128], 
             zoom: 15
         });
 
         let marker = null;
 
-        // Escuchar cambios en Firebase cada 5 segundos (onValue es en tiempo real)
         onValue(ubicacionRef, (snapshot) => {
             const data = snapshot.val();
             if (data && data.latitud && data.longitud) {
@@ -86,12 +83,11 @@
                 const lon = parseFloat(data.longitud);
                 const hora = new Date(data.hora).toLocaleString();
 
-                // Actualizar info
+                // Actualiza la info
                 document.getElementById('coords').innerHTML = 
                     `Latitud: ${lat.toFixed(5)} | Longitud: ${lon.toFixed(5)}<br>Hora: ${hora}`;
                 document.getElementById('status').textContent = "Ubicación actualizada";
 
-                // Mover cámara y marcador
                 map.flyTo({ center: [lon, lat], zoom: 16 });
 
                 if (marker) {
@@ -108,11 +104,10 @@
             console.error("Error Firebase:", error);
             document.getElementById('status').textContent = "Error de conexión";
         });
-
-        // Actualización visual cada 5 segundos (opcional, ya que onValue es en tiempo real)
         setInterval(() => {
             document.getElementById('status').textContent = `Última actualización: ${new Date().toLocaleTimeString()}`;
         }, 5000);
     </script>
 </body>
+
 </html>
