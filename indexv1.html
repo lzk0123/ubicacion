@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KEVIN LOZA</title>
+    <link href="https://api.mapbox.com/mapbox-gl-js/v3.7.0/mapbox-gl.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-draw/v1.4.3/mapbox-gl-draw.css" type="text/css">
+    <style>
+        body { margin:0; padding:0; background:#0A264B; font-family:Arial; color:white; overflow:hidden; }
+        #map { width:100%; height:100vh; margin-top:70px; }
+        .title { background:#0A264B; color:#E2D3D3; padding:15px; text-align:center; font-size:26px; font-weight:bold; position:fixed; top:0; width:100%; z-index:1000; box-shadow:0 4px 10px rgba(0,0,0,0.5); }
+        .panel { position:fixed; top:90px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,0.8); padding:12px 20px; border-radius:15px; z-index:999; backdrop-filter:blur(15px); border:2px solid #00ff88; display:flex; gap:10px; }
+        button { background:#00ff88; color:black; border:none; padding:12px 20px; border-radius:12px; font-weight:bold; cursor:pointer; font-size:15px; transition:0.3s; }
+        button:hover { background:#00cc66; transform:translateY(-2px); }
+        button.active { background:#ff0055; }
+        .coords { position:fixed; bottom:20px; left:10px; background:rgba(0,0,0,0.7); padding:10px 15px; border-radius:10px; font-size:16px; z-index:999; backdrop-filter:blur(10px); border:1px solid #00ff88; }
+        .sidebar { position:fixed; top:0; right:-400px; width:380px; height:100%; background:#0f1a2e; z-index:2000; transition:0.4s; padding:20px; box-shadow:-5px 0 20px rgba(0,0,0,0.7); overflow-y:auto; }
+        .sidebar.open { right:0; }
+        .close-btn { position:absolute; top:15px; right:15px; background:#ff0055; color:white; width:40px; height:40px; border-radius:50%; font-size:24px; cursor:pointer; }
+        .geofence-item { background:rgba(0,255,136,0.1); padding:12px; border-radius:8px; margin:10px 0; border-left:4px solid #00ff88; }
+        .notification { position:fixed; top:100px; left:50%; transform:translateX(-50%); background:#ff0055; color:white; padding:15px 40px; border-radius:10px; z-index:3000; font-size:18px; font-weight:bold; box-shadow:0 0 20px rgba(255,0,85,0.8); animation:alert 0.5s; display:none; }
+        @keyframes alert { 0%{transform:translateX(-50%) scale(0.8)} 100%{transform:translateX(-50%) scale(1)} }
+        .mapbox-gl-draw_ctrl-bottom-right { display:none !important; }
+    </style>
+</head>
+<body>
+    <div class="title">KEVIN LOZA - GPS BOLIVIA</div>
+    <div id="map"></div>
+    <div class="coords" id="coords">Lat: --- | Lon: ---</div>
+    
+    <div class="panel">
+        <button onclick="followMe()">Seguime</button>
+        <button onclick="goPlanet()">PLANETA</button>
+        <button onclick="goStreet()">CALLE</button>
+        <button onclick="clearRoute()">Borrar Ruta</button>
+        <button onclick="toggleSidebar()">Geocercas</button>
+    </div>
+
+    <div class="notification" id="alert">SALISTE DE LA GEOCERCA</div>
+
+    <div class="sidebar" id="sidebar">
+        <div class="close-btn" onclick="toggleSidebar()">X</div>
+        <h2 style="color:#00ff88; text-align:center;">Crear Geocerca</h2>
+        <p style="background:#1e2d47;padding:15px;border-radius:10px;">
+            Haz clic en un botón → dibuja en el mapa → termina y guarda
+        </p>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+            <button onclick="draw.circle()">Círculo</button>
+            <button onclick="draw.polygon()">Polígono</button>
+        </div>
+        <button style="width:100%; margin-top:15px; padding:15px; background:#ff0055;" onclick="draw.trash()">Cancelar / Borrar</button>
+
+        <h3 style="margin-top:30px;">Mis Geocercas</h3>
+        <div id="geofenceList"></div>
+    </div>
+
+    <audio id="alertSound" src="https://assets.mixkit.co/sfx/preview/mixkit-alarm-tone-1065.mp3"></audio>
+
+    <script src="https://api.mapbox.com/mapbox-gl-js/v3.7.0/mapbox-gl.js"></script>
+    <script src="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-draw/v1.4.3/mapbox-gl-draw.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
+        import { getDatabase, ref, onValue, set, push, remove } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-database.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyB-ToD8fquOAAkzbUy6TBoH-3wWEZEUEXw",
+            authDomain: "program1-90a6f.firebaseapp.com",
+            databaseURL: "https://program1-90a6f-default-rtdb.firebaseio.com",
+            projectId: "program1-90a6f",
+            storageBucket: "program1-90a6f.firebasestorage.app",
+            messagingSenderId: "412320577225",
+            appId: "1:412320577225:web:b9cbf2111f5dadde17bf18"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+        const ubicacionRef = ref(db, 'ubicacion/usuario');
+        const geofencesRef = ref(db, 'geocercas');
+
+        mapboxgl.accessToken = 'pk.eyJ1IjoibHprMjkxMiIsImEiOiJjbWdzYmZicjUxcXMyMmlwdnJsNmJhc2Y2In0.H_AarMxbn777uwj92e5eTQ';
+
+        const map = new mapboxgl.Map({
+            container: 'map',
+            style: 'mapbox://styles/mapbox/dark-v11',
+            center: [-66.0, -17.0],
+            zoom: 16
+        });
+
+        map.addControl(new mapboxgl.NavigationControl(), 'top-right');
+
+        const Draw = new MapboxDraw({
+            displayControlsDefault: false,
+            controls: {
+                circle: true,
+                polygon: true,
+                trash: true
+            }
+        });
+        map.addControl(Draw, 'top-left');
+
+        const draw = {
+            circle: () => Draw.changeMode('draw_circle'),
+            polygon: () => Draw.changeMode('draw_polygon'),
+            trash: () => Draw.deleteAll()
+        };
+
+        let marker = null;
+        let routeCoords = [];
+        let lat = -17.0, lon = -66.0;
+
+        function updateRoute() {
+            if (routeCoords.length < 2) return;
+            if (map.getLayer('route')) map.removeLayer('route');
+            if (map.getSource('route')) map.removeSource('route');
+            map.addSource('route', { type: 'geojson', data: { type: 'Feature', geometry: { type: 'LineString', coordinates: routeCoords }}});
+            map.addLayer({ id: 'route', type: 'line', source: 'route', paint: { 'line-color': '#00ff88', 'line-width': 7, 'line-opacity': 0.9 }});
+        }
+
+        window.followMe = () => map.flyTo({ center: [lon, lat], zoom: map.getZoom(), duration: 2000 });
+        window.goPlanet = () => map.flyTo({ center: [-66.0, -17.0], zoom: 5, pitch: 0, duration: 3000 });
+        window.goStreet = () => map.flyTo({ center: [lon, lat], zoom: 18, pitch: 60, duration: 3000 });
+        window.clearRoute = () => { routeCoords = []; if (map.getLayer('route')) { map.removeLayer('route'); map.removeSource('route'); }};
+        window.toggleSidebar = () => document.getElementById('sidebar').classList.toggle('open');
+
+        map.on('draw.create', (e) => {
+            const feature = e.features[0];
+            const name = prompt("Nombre de la geocerca:", "Mi Zona") || "Geocerca";
+            const geofence = {
+                name: name,
+                type: feature.geometry.type === 'Polygon' ? 'polygon' : 'circle',
+                coordinates: feature.geometry.coordinates,
+                color: "#00ff88",
+                id: feature.id
+            };
+            const newRef = ref(db, 'geocercas/' + feature.id);
+            set(newRef, geofence);
+            Draw.delete(feature.id);
+        });
+
+        function drawGeofences() {
+            if (map.getLayer('geofences')) map.removeLayer('geofences');
+            if (map.getSource('geofences')) map.removeSource('geofences');
+            const features = [];
+            document.querySelectorAll('.geofence-item').forEach(item => {
+                const id = item.dataset.id;
+                const data = JSON.parse(item.dataset.geojson);
+                features.push({
+                    type: 'Feature',
+                    id: id,
+                    geometry: data
+                });
+            });
+            if (features.length > 0) {
+                map.addSource('geofences', { type: 'geojson', data: { type: 'FeatureCollection', features } });
+                map.addLayer({ id: 'geofences', type: 'fill', source: 'geofences', paint: { 'fill-color': '#00ff88', 'fill-opacity': 0.2 } });
+                map.addLayer({ id: 'geofences-outline', type: 'line', source: 'geofences', paint: { 'line-color': '#00ff88', 'line-width': 3 } });
+            }
+        }
+
+        function checkInside() {
+            document.querySelectorAll('.geofence-item').forEach(item => {
+                const geojson = JSON.parse(item.dataset.geojson);
+                const inside = turf.booleanPointInPolygon([lon, lat], geojson);
+                if (!inside) {
+                    showAlert(`Saliste de: ${item.querySelector('strong').textContent}`);
+                }
+            });
+        }
+
+        function showAlert(msg) {
+            const alert = document.getElementById('alert');
+            alert.textContent = msg;
+            alert.style.display = 'block';
+            document.getElementById('alertSound').play();
+            setTimeout(() => alert.style.display = 'none', 5000);
+        }
+
+        onValue(geofencesRef, (snapshot) => {
+            const list = document.getElementById('geofenceList');
+            list.innerHTML = '';
+            snapshot.forEach(child => {
+                const g = child.val();
+                g.id = child.key;
+                const item = document.createElement('div');
+                item.className = 'geofence-item';
+                item.dataset.id = g.id;
+                item.dataset.geojson = JSON.stringify(g.coordinates[0] ? { type: 'Polygon', coordinates: g.coordinates } : turf.circle(g.coordinates[0], 500, { units: 'meters' }).geometry);
+                item.innerHTML = `
+                    <strong>${g.name}</strong><br>
+                    ${g.type === 'circle' ? 'Circular' : 'Polígono'}<br>
+                    <button onclick="removeGeofence('${g.id}')" style="float:right; background:#ff0055; padding:5px 10px; margin-top:5px;">Eliminar</button>
+                `;
+                list.appendChild(item);
+            });
+            drawGeofences();
+        });
+
+        window.removeGeofence = (id) => {
+            if (confirm('¿Eliminar esta geocerca?')) {
+                remove(ref(db, `geocercas/${id}`));
+            }
+        };
+
+        onValue(ubicacionRef, (snapshot) => {
+            const data = snapshot.val();
+            if (!data?.latitud || !data?.longitud) return;
+            lat = parseFloat(data.latitud);
+            lon = parseFloat(data.longitud);
+
+            document.getElementById('coords').innerHTML = `Lat: ${lat.toFixed(6)} | Lon: ${lon.toFixed(6)}`;
+
+            routeCoords.push([lon, lat]);
+            if (routeCoords.length > 200) routeCoords.shift();
+            updateRoute();
+
+            if (!marker) {
+                marker = new mapboxgl.Marker({ color: '#00ff88' }).setLngLat([lon, lat]).addTo(map);
+            } else {
+                marker.setLngLat([lon, lat]);
+            }
+
+            checkInside();
+        });
+
+        map.on('load', () => map.scrollZoom.enable());
+    </script>
+</body>
+</html>
